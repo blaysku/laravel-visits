@@ -447,4 +447,44 @@ class VisitsTest extends TestCase
 
         $this->assertNotEquals($fresh2->first(), $cached->first());
     }
+
+    /**
+     * @test
+     */
+    public function it_list_with_callback()
+    {
+        $post1 = Post::create(['ID' => 1, 'name' => '1'])->fresh();
+        $post2 = Post::create(['ID' => 2, 'name' => '2'])->fresh();
+        $post3 = Post::create(['ID' => 3, 'name' => '3'])->fresh();
+        $post4 = Post::create(['ID' => 4, 'name' => '4'])->fresh();
+        $post5 = Post::create(['ID' => 5, 'name' => '5'])->fresh();
+
+        visits($post5)->forceIncrement(5);
+        visits($post1)->forceIncrement(4);
+        visits($post2)->forceIncrement(3);
+        visits($post3)->forceIncrement(2);
+        visits($post4)->forceIncrement(1);
+
+        $topList = visits(Post::class)->top(4, function ($query) {
+            return $query->select('ID', 'name');
+        })->toJson();
+
+        $expectedTopList = collect([$post5, $post1, $post2, $post3])
+            ->map(function ($post) {
+                return $post->only('ID', 'name');
+            })->toJson();
+
+        $this->assertEquals($expectedTopList, $topList);
+
+        $lowList = visits(Post::class)->low(5, function ($query) {
+            return $query->select('ID', 'name');
+        })->toJson();
+
+        $expectedLowList = collect([$post4, $post3, $post2, $post1, $post5])
+            ->map(function ($post) {
+                return $post->only('ID', 'name');
+            })->toJson();
+
+        $this->assertEquals($expectedLowList, $lowList);
+    }
 }

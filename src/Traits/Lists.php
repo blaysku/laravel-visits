@@ -8,10 +8,11 @@ trait Lists
      * Fetch all time trending subjects.
      *
      * @param int $limit
+     * @param callable|null $callback
      * @param bool $isLow
      * @return \Illuminate\Support\Collection|array
      */
-    public function top($limit = 5, $isLow = false)
+    public function top($limit = 5, callable $callback = null, $isLow = false)
     {
         $cacheKey = $this->keys->cache($limit, $isLow);
         $cachedList = $this->cachedList($limit, $cacheKey);
@@ -21,7 +22,7 @@ trait Lists
             return $cachedList;
         }
 
-        return $this->freshList($cacheKey, $visitsIds);
+        return $this->freshList($cacheKey, $visitsIds, $callback);
     }
 
 
@@ -57,11 +58,12 @@ trait Lists
      * Fetch lowest subjects.
      *
      * @param int $limit
+     * @param callable|null $callback
      * @return \Illuminate\Support\Collection|array
      */
-    public function low($limit = 5)
+    public function low($limit = 5, callable $callback = null)
     {
-        return $this->top($limit, true);
+        return $this->top($limit, $callback, true);
     }
 
 
@@ -81,18 +83,26 @@ trait Lists
     /**
      * @param $cacheKey
      * @param $visitsIds
+     * @param callable $callback
      * @return mixed
      */
-    protected function freshList($cacheKey, $visitsIds)
+    protected function freshList($cacheKey, $visitsIds, callable $callback = null)
     {
         if (count($visitsIds)) {
             $this->redis->del($cacheKey);
 
-            return ($this->subject)::whereIn($this->keys->primary, $visitsIds)
-                ->get()
+            $query = ($this->subject)::whereIn($this->keys->primary, $visitsIds);
+
+            if (!is_null($callback)) {
+                $query = call_user_func($callback, $query);
+            };
+
+            return $query->get()
                 ->sortBy(function ($subject) use ($visitsIds) {
                     return array_search($subject->{$this->keys->primary}, $visitsIds);
-                })->each(function ($subject) use ($cacheKey) {
+                })
+                ->values()
+                ->each(function ($subject) use ($cacheKey) {
                     $this->redis->rpush($cacheKey, serialize($subject));
                 });
         }
