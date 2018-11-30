@@ -175,14 +175,22 @@ class Visits
      */
     public function increment($inc = 1, $force = false, $periods = true, $country = true, $refer = true)
     {
-        if ($force OR !$this->isCrawler() && !$this->recordedIp()) {
-            $this->redis->zincrby($this->keys->visits, $inc, $this->keys->id);
-            $this->redis->incrby($this->keys->visits . '_total', $inc);
+        try {
+            if ($force OR !$this->isCrawler() && !$this->recordedIp()) {
+                $this->redis->zincrby($this->keys->visits, $inc, $this->keys->id);
+                $this->redis->incrby($this->keys->visits . '_total', $inc);
 
-            //NOTE: $method is parameter also .. ($periods,$country,$refer)
-            foreach (['country', 'refer', 'periods'] as $method) {
-                $$method && $this->{'record' . studly_case($method)}($inc);
+                //NOTE: $method is parameter also .. ($periods, $country, $refer)
+                foreach (['country', 'refer', 'periods'] as $method) {
+                    $$method && $this->{'record' . studly_case($method)}($inc);
+                }
+
+                return true;
             }
+
+            return false;
+        } catch (\Exception $e) {
+            return false;
         }
     }
 
@@ -192,7 +200,7 @@ class Visits
      */
     public function forceIncrement($inc = 1, $periods = true)
     {
-        $this->increment($inc, true, $periods);
+        return $this->increment($inc, true, $periods);
     }
 
     /**
@@ -203,7 +211,7 @@ class Visits
      */
     public function decrement($dec = 1, $force = false)
     {
-        $this->increment(-$dec, $force);
+        return $this->increment(-$dec, $force);
     }
 
     /**
@@ -212,7 +220,7 @@ class Visits
      */
     public function forceDecrement($dec = 1, $periods = true)
     {
-        $this->increment(-$dec, true, $periods);
+        return $this->increment(-$dec, true, $periods);
     }
 
     /**
