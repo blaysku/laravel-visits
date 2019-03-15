@@ -6,7 +6,7 @@ use awssat\Visits\Traits\Lists;
 use awssat\Visits\Traits\Periods;
 use awssat\Visits\Traits\Record;
 use awssat\Visits\Traits\Setters;
-use Carbon\Carbon;
+use Illuminate\Support\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Redis;
 use Jaybizzle\CrawlerDetect\CrawlerDetect;
@@ -72,32 +72,15 @@ class Visits
     }
 
     /**
-     * @param $attribute
-     * @return $this
-     */
-    public function __get($attribute)
-    {
-        if($this->keys->instanceOfModel && $relation = $this->subject->$attribute) {
-            $this->keys->append($attribute, $relation->{$relation->getKeyName()});
-        }
-
-        return $this;
-    }
-
-    /**
      * @param $subject
      * @return $this
      */
     public function by($subject)
     {
         if($subject instanceof Model) {
-            $this->keys->append(strtolower(str_singular(class_basename(get_class($subject)))),
-                $subject->{$subject->getKeyName()});
+            $this->keys->append($this->keys->modelName($subject), $subject->{$subject->getKeyName()});
         } else if (is_array($subject)) {
-            $subject = collect($subject);
-            $this->keys->append($subject->flip()->first(), $subject->first());
-        } else {
-            $this->keys->append('custom', $subject);
+            $this->keys->append(array_keys($subject)[0], array_first($subject));
         }
 
         return $this;
@@ -141,22 +124,28 @@ class Visits
         }
 
         return intval(
-            (!$this->keys->instanceOfModel) ?
-                $this->redis->get($this->keys->visits . '_total') :
-                $this->redis->zscore($this->keys->visits, $this->keys->id)
+            $this->keys->instanceOfModel ?
+                $this->redis->zscore($this->keys->visits, $this->keys->id) :
+                $this->redis->get($this->keys->visitsTotal())
         );
     }
 
     /**
      * use diffForHumans to show diff
-     * @param $period
      * @return Carbon
      */
-    public function timeLeft($period = false)
+    public function timeLeft()
     {
-        return Carbon::now()->addSeconds($this->redis->ttl(
-            $period ? $this->keys->period($period) : $this->keys->ip(request()->ip())
-        ));
+        return Carbon::now()->addSeconds($this->redis->ttl($this->keys->visits));
+    }
+
+    /**
+     * use diffForHumans to show diff
+     * @return Carbon
+     */
+    public function ipTimeLeft()
+    {
+        return Carbon::now()->addSeconds($this->redis->ttl($this->keys->ip(request()->ip())));
     }
 
     protected function isCrawler()
@@ -178,7 +167,7 @@ class Visits
         try {
             if ($force OR !$this->isCrawler() && !$this->recordedIp()) {
                 $this->redis->zincrby($this->keys->visits, $inc, $this->keys->id);
-                $this->redis->incrby($this->keys->visits . '_total', $inc);
+                $this->redis->incrby($this->keys->visitsTotal(), $inc);
 
                 //NOTE: $method is parameter also .. ($periods, $country, $refer)
                 foreach (['country', 'refer', 'periods'] as $method) {
